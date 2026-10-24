@@ -47,23 +47,42 @@ that reduces actions into new state, and stateless Compose screens that render i
 ```mermaid
 flowchart LR
     subgraph UI["Compose UI (feature/*)"]
-        S[Screens] -->|Action| VM
-    end
-    subgraph VMs["ViewModels (activity-scoped, Hilt)"]
-        VM[Catalog / Cart / Orders / Account]
-    end
-    subgraph Data["data/"]
-        R[Catalog / Order / Account repositories]
-    end
-    subgraph Cloud["Firebase"]
-        FS[(Firestore)]
-        AU[Auth]
+        S["Screens / Composables"]
+        A["User Actions"]
+        S --> A
     end
 
-    VM -->|UiState flow| S
-    VM -->|suspend calls| R
+    subgraph VMs["ViewModels (Hilt-injected)"]
+        VM["Catalog / Cart / Orders / Account ViewModels"]
+        State["UiState (StateFlow)"]
+    end
+
+    subgraph Data["Data Layer"]
+        R["Catalog / Cart / Order / Account Repositories"]
+    end
+
+    subgraph Cloud["Firebase Services"]
+        FS[("Cloud Firestore")]
+        AU["Firebase Authentication"]
+    end
+
+    A -->|"Events / callbacks"| VM
+    VM -->|"Updates"| State
+    State -->|"CollectAsStateWithLifecycle"| S
+
+    VM -->|"Coroutines / suspend calls"| R
     R --> FS
     R --> AU
+
+    classDef ui fill:#e8f2ff,stroke:#3973ac,color:#222
+    classDef vm fill:#e9f7ef,stroke:#39845a,color:#222
+    classDef data fill:#fff3d6,stroke:#b38b25,color:#222
+    classDef cloud fill:#f1e8ff,stroke:#8055aa,color:#222
+
+    class S,A ui
+    class VM,State vm
+    class R data
+    class FS,AU cloud
 ```
 
 Dependencies point inward: `feature` → `data` → `domain`. The `domain` package is plain Kotlin (models, pricing rules,
@@ -73,20 +92,30 @@ order construction) so it is unit-testable on the JVM
 
 ```mermaid
 flowchart TD
-    Home([Shop]) --> Detail[Product details]
-    Home --> Cart
-    Cart -->|signed in| Checkout
-    Cart -->|guest| SignIn
-    Checkout -->|order placed| Orders
-    Orders --> OrderDetail[Order details]
+    Home(["Shop / Home"]) --> Detail["Product Details"]
+    Home --> Cart["Shopping Cart"]
 
-    SignIn <--> SignUp
-    SignIn -->|success| Profile
-    Profile --> Edit[Edit profile]
+    Cart --> AuthCheck{"Signed in?"}
+    AuthCheck -->|Yes| Checkout["Checkout"]
+    AuthCheck -->|No| SignIn["Sign In"]
 
-    Profile -.->|role = ADMIN| Admin
-    Admin --> Users[Customers] --> Profile
-    Admin --> Stock[Inventory]
+    SignIn -->|Success| Checkout
+    Checkout -->|Order placed| Orders["My Orders"]
+    Orders --> OrderDetail["Order Details"]
+
+    SignIn <--> SignUp["Sign Up"]
+    SignIn -->|Success| Profile["Profile"]
+    SignUp -->|Account created| SignIn
+
+    Profile --> Edit["Edit Profile"]
+
+    Profile -.->|Role = ADMIN| Admin["Admin Dashboard"]
+    Admin --> Users["Manage Customers"]
+    Users --> CustomerProfile["Customer Profile"]
+    Admin --> Stock["Inventory Management"]
+
+    classDef admin fill:#ffe5e5,stroke:#cc3333,color:#222
+    class Admin,Users,CustomerProfile,Stock admin
 ```
 
 Routes that need a session (checkout, orders, profile) or the `ADMIN` role (back office) are wrapped in a guard that redirects to sign-in
@@ -99,45 +128,51 @@ Firestore collections and their relationships:
 erDiagram
     USERS ||--o{ ORDERS : places
     ORDERS ||--|{ ORDER_LINES : contains
-    PRODUCTS ||--o{ ORDER_LINES : "snapshot of"
+    PRODUCTS ||--o{ ORDER_LINES : references
 
     USERS {
-        string userId PK "Firebase Auth uid"
+        string userId PK "Firebase Auth UID"
         string fullName
         string email
         string phoneNumber
-        map address
-        long createdAt
-        string role "ADMIN | CUSTOMER | DELIVERY"
+        json address
+        bigint createdAt
+        string role "ADMIN CUSTOMER DELIVERY"
     }
+
     PRODUCTS {
         string id PK
         string title
-        number price
-        number discountPercentage
-        number rating
+        float price
+        float discountPercentage
+        float rating
         int stock
-        timestamp restockDate
+        datetime restockDate
         string brand
         string category
         string thumbnail
-        list images
+        json images
     }
+
     ORDERS {
         string orderId PK
         string userId FK
-        timestamp orderDate
-        number totalAmount
-        number shippingFee
-        map deliveryAddress
+        datetime orderDate
+        float totalAmount
+        float shippingFee
+        json deliveryAddress
         string paymentMethod
-        string status "PENDING | CONFIRMED | SHIPPED | DELIVERED | CANCELLED"
+        string status "PENDING CONFIRMED SHIPPED DELIVERED CANCELLED"
     }
+
     ORDER_LINES {
-        map product "copy at purchase time"
+        string orderLineId PK
+        string orderId FK
+        string productId FK
         int quantity
-        number unitPrice "frozen"
-        number discountApplied "frozen"
+        float unitPrice "Price frozen at purchase"
+        float discountApplied "Discount frozen at purchase"
+        json productSnapshot "Product copy at purchase time"
     }
 ```
 
