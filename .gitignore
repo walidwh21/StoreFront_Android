@@ -1,0 +1,20 @@
+# Gradle / Android
+*.iml
+.gradle/
+/build/
+/app/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+
+# IDE and tooling state
+.idea/
+.kotlin/
+.DS_Store
+
+# Firebase client config and admin keys must never be committed
+/app/google-services.json
+tools/seed/node_modules/
+tools/seed/*service-account*.json
+tools/seed/*adminsdk*.json

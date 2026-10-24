@@ -1,0 +1,15 @@
+{
+  "name": "storefront-seed-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Helper scripts to load demo products into Firestore and manage roles.",
+  "scripts": {
+    "fetch": "node fetch-products.mjs",
+    "seed": "node seed-firestore.mjs",
+    "set-role": "node set-role.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.4.0"
+  }
+}
